@@ -1,0 +1,1288 @@
+name: Build Vocab Reader Auto Popup APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ---------------------------------------------------------
+      # 1. Checkout repository
+      # ---------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ---------------------------------------------------------
+      # 2. Java 17
+      # ---------------------------------------------------------
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+
+      # ---------------------------------------------------------
+      # 3. Create Android project folders
+      # ---------------------------------------------------------
+      - name: Create project structure
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p app/src/main/java/com/omipaul/vocabreader
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mkdir -p app/src/main/res/mipmap-mdpi
+          mkdir -p app/src/main/res/mipmap-xhdpi
+          mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+
+
+      # ---------------------------------------------------------
+      # 4. settings.gradle.kts
+      # ---------------------------------------------------------
+      - name: Create settings.gradle.kts
+        shell: bash
+        run: |
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "VocabReader"
+          include(":app")
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 5. Root build.gradle.kts
+      # ---------------------------------------------------------
+      - name: Create root build.gradle.kts
+        shell: bash
+        run: |
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 6. gradle.properties
+      # ---------------------------------------------------------
+      - name: Create gradle.properties
+        shell: bash
+        run: |
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          kotlin.code.style=official
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 7. App build.gradle.kts
+      # ---------------------------------------------------------
+      - name: Create app build.gradle.kts
+        shell: bash
+        run: |
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.omipaul.vocabreader"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.omipaul.vocabreader"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 20
+                  versionName = "2.0.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+
+                  debug {
+                      isMinifyEnabled = false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          EOF
+
+          cat > app/proguard-rules.pro <<'EOF'
+          # Vocab Reader
+          # No custom ProGuard rules required.
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 8. AndroidManifest.xml
+      # ---------------------------------------------------------
+      - name: Create AndroidManifest.xml
+        shell: bash
+        run: |
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <!-- Internet for dictionary and translation lookup -->
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <!-- Required for the floating popup -->
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="Vocab Reader"
+                  android:resizeableActivity="true"
+                  android:supportsRtl="true"
+                  android:theme="@style/AppTheme"
+                  android:usesCleartextTraffic="false">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+                  <service
+                      android:name=".VocabAccessibilityService"
+                      android:description="@string/accessibility_description"
+                      android:exported="false"
+                      android:label="Vocab Reader"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config" />
+
+                  </service>
+
+              </application>
+
+          </manifest>
+          EOF
+
+          mkdir -p app/src/main/res/xml
+
+          cat > app/src/main/res/xml/accessibility_service_config.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeViewTextSelectionChanged|typeViewFocused"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/accessibility_description"
+              android:notificationTimeout="100"
+              android:settingsActivity="com.omipaul.vocabreader.MainActivity" />
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 9. strings.xml
+      # ---------------------------------------------------------
+      - name: Create strings.xml
+        shell: bash
+        run: |
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+
+              <string name="app_name">Vocab Reader</string>
+
+              <string name="accessibility_description">
+                  Vocab Reader detects selected text in supported apps and shows a vocabulary popup.
+              </string>
+
+          </resources>
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 10. themes.xml
+      # ---------------------------------------------------------
+      - name: Create themes.xml
+        shell: bash
+        run: |
+          cat > app/src/main/res/values/themes.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+
+              <style name="AppTheme"
+                  parent="@android:style/Theme.Material.Light.NoActionBar">
+
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowActionModeOverlay">true</item>
+                  <item name="android:colorAccent">#3F51B5</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+                  <item name="android:statusBarColor">#FFFFFF</item>
+                  <item name="android:windowLightStatusBar">true</item>
+
+              </style>
+
+          </resources>
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 11. Launcher icon
+      # ---------------------------------------------------------
+      - name: Create launcher icon
+        shell: bash
+        run: |
+          cat > app/src/main/res/drawable/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+
+              <path
+                  android:fillColor="#3F51B5"
+                  android:pathData="M0,0 L108,0 L108,108 L0,108 Z" />
+
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M25,28 L83,28 L83,36 L25,36 Z" />
+
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M25,47 L83,47 L83,55 L25,55 Z" />
+
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M25,66 L67,66 L67,74 L25,74 Z" />
+
+          </vector>
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 12. MainActivity.kt
+      # ---------------------------------------------------------
+      - name: Create MainActivity.kt
+        shell: bash
+        run: |
+          cat > app/src/main/java/com/omipaul/vocabreader/MainActivity.kt <<'EOF'
+          package com.omipaul.vocabreader
+
+          import android.app.Activity
+          import android.content.Context
+          import android.content.Intent
+          import android.graphics.Color
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.view.Gravity
+          import android.view.View
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.Switch
+          import android.widget.TextView
+
+          class MainActivity : Activity() {
+
+              private lateinit var autoPopupSwitch: Switch
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  buildScreen()
+              }
+
+              override fun onResume() {
+                  super.onResume()
+
+                  if (::autoPopupSwitch.isInitialized) {
+                      autoPopupSwitch.isChecked =
+                          getSharedPreferences("settings", Context.MODE_PRIVATE)
+                              .getBoolean("auto_popup", true)
+                  }
+              }
+
+              private fun buildScreen() {
+
+                  val root = LinearLayout(this)
+                  root.orientation = LinearLayout.VERTICAL
+                  root.setPadding(32, 40, 32, 32)
+                  root.setBackgroundColor(Color.WHITE)
+
+                  val scroll = ScrollView(this)
+
+                  val content = LinearLayout(this)
+                  content.orientation = LinearLayout.VERTICAL
+
+                  val title = TextView(this)
+                  title.text = "📖 Vocab Reader"
+                  title.textSize = 30f
+                  title.setTextColor(Color.rgb(25, 25, 25))
+                  title.setPadding(0, 0, 0, 24)
+
+                  content.addView(title)
+
+                  val subtitle = TextView(this)
+                  subtitle.text =
+                      "Select an English word in a supported app and Vocab Reader will show a floating vocabulary card."
+                  subtitle.textSize = 17f
+                  subtitle.setTextColor(Color.DKGRAY)
+                  subtitle.setPadding(0, 0, 0, 28)
+
+                  content.addView(subtitle)
+
+                  autoPopupSwitch = Switch(this)
+                  autoPopupSwitch.text = "Auto Popup"
+                  autoPopupSwitch.textSize = 19f
+                  autoPopupSwitch.isChecked =
+                      getSharedPreferences("settings", Context.MODE_PRIVATE)
+                          .getBoolean("auto_popup", true)
+
+                  autoPopupSwitch.setOnCheckedChangeListener { _, checked ->
+
+                      getSharedPreferences("settings", Context.MODE_PRIVATE)
+                          .edit()
+                          .putBoolean("auto_popup", checked)
+                          .apply()
+
+                      if (!checked) {
+                          VocabOverlay.hide(this)
+                      }
+                  }
+
+                  content.addView(autoPopupSwitch)
+
+                  val overlayButton = Button(this)
+                  overlayButton.text = "Allow Floating Popup"
+                  overlayButton.setOnClickListener {
+                      try {
+                          val intent = Intent(
+                              Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                              Uri.parse("package:$packageName")
+                          )
+                          startActivity(intent)
+                      } catch (_: Exception) {
+                          startActivity(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
+                      }
+                  }
+
+                  content.addView(overlayButton)
+
+                  val accessibilityButton = Button(this)
+                  accessibilityButton.text = "Enable Accessibility Service"
+                  accessibilityButton.setOnClickListener {
+                      startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  }
+
+                  content.addView(accessibilityButton)
+
+                  val instructions = TextView(this)
+                  instructions.text =
+                      """
+                      
+                      HOW TO USE
+
+                      1. Turn Auto Popup ON.
+
+                      2. Allow "Display over other apps".
+
+                      3. Enable Vocab Reader in Android Accessibility settings.
+
+                      4. Open Chrome, a supported PDF reader, or another supported app.
+
+                      5. Select an English word.
+
+                      6. Vocab Reader will try to show the vocabulary card near the selected text.
+
+                      7. Remove/change the selection to hide or update the card.
+
+                      
+                      INFORMATION
+
+                      The feature depends on the other app exposing text-selection/accessibility information. Some apps, protected content, scanned/image-only PDFs, and secure screens may not expose selectable text.
+                      """.trimIndent()
+
+                  instructions.textSize = 16f
+                  instructions.setTextColor(Color.DKGRAY)
+                  instructions.setPadding(0, 28, 0, 20)
+
+                  content.addView(instructions)
+
+                  val testButton = Button(this)
+                  testButton.text = "Test Word Lookup"
+                  testButton.setOnClickListener {
+                      VocabOverlay.show(
+                          this,
+                          "important",
+                          250,
+                          300
+                      )
+                  }
+
+                  content.addView(testButton)
+
+                  scroll.addView(content)
+
+                  root.addView(
+                      scroll,
+                      LinearLayout.LayoutParams(
+                          LinearLayout.LayoutParams.MATCH_PARENT,
+                          LinearLayout.LayoutParams.MATCH_PARENT
+                      )
+                  )
+
+                  setContentView(root)
+              }
+          }
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 13. Accessibility Service
+      # ---------------------------------------------------------
+      - name: Create VocabAccessibilityService.kt
+        shell: bash
+        run: |
+          cat > app/src/main/java/com/omipaul/vocabreader/VocabAccessibilityService.kt <<'EOF'
+          package com.omipaul.vocabreader
+
+          import android.accessibilityservice.AccessibilityService
+          import android.graphics.Rect
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+
+          class VocabAccessibilityService : AccessibilityService() {
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+
+                  if (event == null) return
+
+                  val enabled = getSharedPreferences(
+                      "settings",
+                      MODE_PRIVATE
+                  ).getBoolean("auto_popup", true)
+
+                  if (!enabled) {
+                      VocabOverlay.hide(this)
+                      return
+                  }
+
+                  if (event.eventType !=
+                      AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED
+                  ) {
+                      return
+                  }
+
+                  val selectedText = event.text
+                      ?.joinToString(" ")
+                      ?.trim()
+                      ?: ""
+
+                  if (selectedText.isBlank()) {
+                      VocabOverlay.hide(this)
+                      return
+                  }
+
+                  val cleaned = selectedText
+                      .replace(Regex("\\s+"), " ")
+                      .trim()
+
+                  if (cleaned.length > 100) {
+                      return
+                  }
+
+                  val node = event.source
+
+                  val rect = Rect()
+
+                  if (node != null) {
+                      try {
+                          node.getBoundsInScreen(rect)
+                      } catch (_: Exception) {
+                      }
+                  }
+
+                  if (rect.width() <= 0 || rect.height() <= 0) {
+
+                      val screenWidth = resources.displayMetrics.widthPixels
+                      val screenHeight = resources.displayMetrics.heightPixels
+
+                      rect.set(
+                          screenWidth / 4,
+                          screenHeight / 3,
+                          screenWidth * 3 / 4,
+                          screenHeight / 2
+                      )
+                  }
+
+                  VocabOverlay.show(
+                      this,
+                      cleaned,
+                      rect.centerX(),
+                      rect.top
+                  )
+              }
+
+              override fun onInterrupt() {
+                  VocabOverlay.hide(this)
+              }
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+              }
+          }
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 14. Dictionary / Translation service
+      # ---------------------------------------------------------
+      - name: Create DictionaryService.kt
+        shell: bash
+        run: |
+          cat > app/src/main/java/com/omipaul/vocabreader/DictionaryService.kt <<'EOF'
+          package com.omipaul.vocabreader
+
+          import android.text.Html
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.net.HttpURLConnection
+          import java.net.URLEncoder
+          import java.net.URL
+
+          data class WordResult(
+              val word: String,
+              val meaningBn: String,
+              val pronunciation: String,
+              val synonyms: String,
+              val definition: String,
+              val partOfSpeech: String,
+              val example: String
+          )
+
+          object DictionaryService {
+
+              fun lookup(
+                  input: String,
+                  callback: (WordResult) -> Unit
+              ) {
+
+                  Thread {
+
+                      val word = input
+                          .trim()
+                          .split(Regex("\\s+"))
+                          .firstOrNull()
+                          ?: ""
+
+                      if (word.isBlank()) return@Thread
+
+                      var definition = ""
+                      var synonyms = ""
+                      var pronunciation = ""
+                      var partOfSpeech = ""
+                      var example = ""
+
+                      try {
+
+                          val url =
+                              "https://api.dictionaryapi.dev/api/v2/entries/en/" +
+                                  URLEncoder.encode(word, "UTF-8")
+
+                          val json = get(url)
+
+                          if (json != null) {
+
+                              val array = JSONArray(json)
+
+                              if (array.length() > 0) {
+
+                                  val entry = array.getJSONObject(0)
+
+                                  pronunciation =
+                                      entry.optString("phonetic", "")
+
+                                  val phonetics =
+                                      entry.optJSONArray("phonetics")
+
+                                  if (phonetics != null) {
+
+                                      for (i in 0 until phonetics.length()) {
+
+                                          val p =
+                                              phonetics.optJSONObject(i)
+
+                                          if (p != null) {
+
+                                              if (pronunciation.isBlank()) {
+                                                  pronunciation =
+                                                      p.optString("text", "")
+                                              }
+
+                                              if (pronunciation.isNotBlank()) {
+                                                  break
+                                              }
+                                          }
+                                      }
+                                  }
+
+                                  val meanings =
+                                      entry.optJSONArray("meanings")
+
+                                  if (meanings != null) {
+
+                                      val synonymSet =
+                                          LinkedHashSet<String>()
+
+                                      for (i in 0 until meanings.length()) {
+
+                                          val meaning =
+                                              meanings.optJSONObject(i)
+
+                                          if (meaning != null) {
+
+                                              if (partOfSpeech.isBlank()) {
+                                                  partOfSpeech =
+                                                      meaning.optString(
+                                                          "partOfSpeech",
+                                                          ""
+                                                      )
+                                              }
+
+                                              val definitions =
+                                                  meaning.optJSONArray(
+                                                      "definitions"
+                                                  )
+
+                                              if (definitions != null) {
+
+                                                  for (
+                                                      j in 0 until definitions.length()
+                                                  ) {
+
+                                                      val d =
+                                                          definitions.optJSONObject(j)
+
+                                                      if (d != null) {
+
+                                                          if (definition.isBlank()) {
+                                                              definition =
+                                                                  d.optString(
+                                                                      "definition",
+                                                                      ""
+                                                                  )
+                                                          }
+
+                                                          if (example.isBlank()) {
+                                                              example =
+                                                                  d.optString(
+                                                                      "example",
+                                                                      ""
+                                                                  )
+                                                          }
+
+                                                          val syn =
+                                                              d.optJSONArray(
+                                                                  "synonyms"
+                                                              )
+
+                                                          if (syn != null) {
+
+                                                              for (
+                                                                  k in 0 until syn.length()
+                                                              ) {
+                                                                  synonymSet.add(
+                                                                      syn.optString(k)
+                                                                  )
+                                                              }
+                                                          }
+                                                      }
+                                                  }
+                                              }
+                                          }
+                                      }
+
+                                      synonyms =
+                                          synonymSet
+                                              .take(10)
+                                              .joinToString(", ")
+                                  }
+                              }
+                          }
+
+                      } catch (_: Exception) {
+                      }
+
+                      var bengaliMeaning = ""
+
+                      try {
+
+                          val query =
+                              URLEncoder.encode(word, "UTF-8")
+
+                          val translationUrl =
+                              "https://api.mymemory.translated.net/get" +
+                                  "?q=$query&langpair=en|bn"
+
+                          val translationJson =
+                              get(translationUrl)
+
+                          if (translationJson != null) {
+
+                              val objectJson =
+                                  JSONObject(translationJson)
+
+                              val response =
+                                  objectJson.optJSONObject(
+                                      "responseData"
+                                  )
+
+                              bengaliMeaning =
+                                  response?.optString(
+                                      "translatedText",
+                                      ""
+                                  ) ?: ""
+
+                              bengaliMeaning =
+                                  Html.fromHtml(
+                                      bengaliMeaning,
+                                      Html.FROM_HTML_MODE_LEGACY
+                                  ).toString()
+                          }
+
+                      } catch (_: Exception) {
+                      }
+
+                      if (bengaliMeaning.isBlank()) {
+                          bengaliMeaning =
+                              "বাংলা অর্থ পাওয়া যায়নি। আবার চেষ্টা করুন।"
+                      }
+
+                      if (pronunciation.isBlank()) {
+                          pronunciation =
+                              "উচ্চারণ তথ্য পাওয়া যায়নি"
+                      }
+
+                      val result =
+                          WordResult(
+                              word = word,
+                              meaningBn = bengaliMeaning,
+                              pronunciation = pronunciation,
+                              synonyms =
+                                  if (synonyms.isBlank())
+                                      "তথ্য পাওয়া যায়নি"
+                                  else synonyms,
+                              definition =
+                                  if (definition.isBlank())
+                                      "Definition পাওয়া যায়নি"
+                                  else definition,
+                              partOfSpeech =
+                                  if (partOfSpeech.isBlank())
+                                      "—"
+                                  else partOfSpeech,
+                              example =
+                                  if (example.isBlank())
+                                      "—"
+                                  else example
+                          )
+
+                      android.os.Handler(
+                          android.os.Looper.getMainLooper()
+                      ).post {
+                          callback(result)
+                      }
+
+                  }.start()
+              }
+
+              private fun get(urlString: String): String? {
+
+                  val connection =
+                      URL(urlString).openConnection()
+                          as HttpURLConnection
+
+                  return try {
+
+                      connection.requestMethod = "GET"
+                      connection.connectTimeout = 8000
+                      connection.readTimeout = 10000
+
+                      if (connection.responseCode in 200..299) {
+
+                          connection.inputStream
+                              .bufferedReader()
+                              .use { it.readText() }
+
+                      } else {
+                          null
+                      }
+
+                  } finally {
+                      connection.disconnect()
+                  }
+              }
+          }
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 15. Floating Overlay
+      # ---------------------------------------------------------
+      - name: Create VocabOverlay.kt
+        shell: bash
+        run: |
+          cat > app/src/main/java/com/omipaul/vocabreader/VocabOverlay.kt <<'EOF'
+          package com.omipaul.vocabreader
+
+          import android.content.Context
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.graphics.drawable.GradientDrawable
+          import android.speech.tts.TextToSpeech
+          import android.view.Gravity
+          import android.view.View
+          import android.view.WindowManager
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.TextView
+          import java.util.Locale
+
+          object VocabOverlay {
+
+              private var windowManager: WindowManager? = null
+              private var overlayView: View? = null
+              private var currentWord = ""
+              private var tts: TextToSpeech? = null
+
+              fun show(
+                  context: Context,
+                  word: String,
+                  x: Int,
+                  y: Int
+              ) {
+
+                  val enabled =
+                      context.getSharedPreferences(
+                          "settings",
+                          Context.MODE_PRIVATE
+                      ).getBoolean("auto_popup", true)
+
+                  if (!enabled) return
+
+                  if (!android.provider.Settings.canDrawOverlays(context)) {
+                      return
+                  }
+
+                  val cleanWord =
+                      word.trim().replace(Regex("\\s+"), " ")
+
+                  if (cleanWord.isBlank()) return
+
+                  currentWord = cleanWord
+
+                  if (overlayView == null) {
+                      createOverlay(context)
+                  }
+
+                  val params =
+                      overlayView?.layoutParams as? WindowManager.LayoutParams
+
+                  if (params != null) {
+
+                      val screenWidth =
+                          context.resources.displayMetrics.widthPixels
+
+                      val popupWidth =
+                          (screenWidth * 0.90f).toInt()
+
+                      params.width = popupWidth
+
+                      params.height =
+                          WindowManager.LayoutParams.WRAP_CONTENT
+
+                      params.gravity = Gravity.TOP or Gravity.START
+
+                      params.x =
+                          ((screenWidth - popupWidth) / 2)
+                              .coerceAtLeast(8)
+
+                      params.y =
+                          (y - 350)
+                              .coerceAtLeast(60)
+
+                      try {
+                          windowManager?.updateViewLayout(
+                              overlayView,
+                              params
+                          )
+                      } catch (_: Exception) {
+                      }
+                  }
+
+                  lookupAndDisplay(context, cleanWord)
+              }
+
+              private fun createOverlay(context: Context) {
+
+                  windowManager =
+                      context.getSystemService(
+                          Context.WINDOW_SERVICE
+                      ) as WindowManager
+
+                  val card =
+                      LinearLayout(context)
+
+                  card.orientation =
+                      LinearLayout.VERTICAL
+
+                  card.setPadding(
+                      28,
+                      22,
+                      28,
+                      22
+                  )
+
+                  val background =
+                      GradientDrawable()
+
+                  background.setColor(
+                      Color.WHITE
+                  )
+
+                  background.cornerRadius = 28f
+
+                  background.setStroke(
+                      2,
+                      Color.rgb(220, 220, 220)
+                  )
+
+                  card.background = background
+
+                  val title =
+                      TextView(context)
+
+                  title.text =
+                      "Looking up…"
+
+                  title.textSize = 22f
+
+                  title.setTextColor(
+                      Color.rgb(20, 20, 20)
+                  )
+
+                  title.tag = "title"
+
+                  card.addView(title)
+
+                  val body =
+                      TextView(context)
+
+                  body.text =
+                      "Please wait…"
+
+                  body.textSize = 16f
+
+                  body.setTextColor(
+                      Color.DKGRAY
+                  )
+
+                  body.setPadding(
+                      0,
+                      14,
+                      0,
+                      10
+                  )
+
+                  body.tag = "body"
+
+                  card.addView(body)
+
+                  val speak =
+                      Button(context)
+
+                  speak.text =
+                      "🔊 English Pronunciation"
+
+                  speak.setOnClickListener {
+
+                      val wordToSpeak =
+                          currentWord
+
+                      if (tts == null) {
+
+                          tts =
+                              TextToSpeech(
+                                  context.applicationContext
+                              ) { status ->
+
+                                  if (
+                                      status ==
+                                      TextToSpeech.SUCCESS
+                                  ) {
+
+                                      tts?.language =
+                                          Locale.US
+
+                                      tts?.speak(
+                                          wordToSpeak,
+                                          TextToSpeech.QUEUE_FLUSH,
+                                          null,
+                                          "vocab_word"
+                                      )
+                                  }
+                              }
+
+                      } else {
+
+                          tts?.language =
+                              Locale.US
+
+                          tts?.speak(
+                              wordToSpeak,
+                              TextToSpeech.QUEUE_FLUSH,
+                              null,
+                              "vocab_word"
+                          )
+                      }
+                  }
+
+                  card.addView(speak)
+
+                  val close =
+                      Button(context)
+
+                  close.text = "Close"
+
+                  close.setOnClickListener {
+                      hide(context)
+                  }
+
+                  card.addView(close)
+
+                  overlayView = card
+
+                  val type =
+                      if (android.os.Build.VERSION.SDK_INT >= 26)
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                      else
+                          WindowManager.LayoutParams.TYPE_PHONE
+
+                  val params =
+                      WindowManager.LayoutParams(
+                          WindowManager.LayoutParams.MATCH_PARENT,
+                          WindowManager.LayoutParams.WRAP_CONTENT,
+                          type,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                              WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                          PixelFormat.TRANSLUCENT
+                      )
+
+                  params.gravity =
+                      Gravity.TOP or Gravity.START
+
+                  params.x = 8
+                  params.y = 80
+
+                  try {
+                      windowManager?.addView(
+                          overlayView,
+                          params
+                      )
+                  } catch (_: Exception) {
+                      overlayView = null
+                  }
+              }
+
+              private fun lookupAndDisplay(
+                  context: Context,
+                  word: String
+              ) {
+
+                  val body =
+                      overlayView
+                          ?.findViewWithTag<TextView>(
+                              "body"
+                          )
+
+                  val title =
+                      overlayView
+                          ?.findViewWithTag<TextView>(
+                              "title"
+                          )
+
+                  title?.text =
+                      "🔎 $word"
+
+                  body?.text =
+                      "Searching meaning, pronunciation and synonyms…"
+
+                  DictionaryService.lookup(
+                      word
+                  ) { result ->
+
+                      if (
+                          overlayView == null ||
+                          currentWord != word
+                      ) {
+                          return@lookup
+                      }
+
+                      title?.text =
+                          "📖 ${result.word}"
+
+                      body?.text =
+                          """
+                          🇧🇩 বাংলা অর্থ:
+                          ${result.meaningBn}
+
+                          🔤 উচ্চারণ:
+                          ${result.pronunciation}
+
+                          🧩 Part of Speech:
+                          ${result.partOfSpeech}
+
+                          🔗 Synonyms:
+                          ${result.synonyms}
+
+                          📚 Definition:
+                          ${result.definition}
+
+                          ✏️ Example:
+                          ${result.example}
+                          """.trimIndent()
+                  }
+              }
+
+              fun hide(context: Context) {
+
+                  try {
+                      if (overlayView != null) {
+                          windowManager?.removeView(
+                              overlayView
+                          )
+                      }
+                  } catch (_: Exception) {
+                  }
+
+                  overlayView = null
+
+                  try {
+                      tts?.stop()
+                      tts?.shutdown()
+                  } catch (_: Exception) {
+                  }
+
+                  tts = null
+              }
+          }
+          EOF
+
+
+      # ---------------------------------------------------------
+      # 16. Generate Gradle wrapper
+      # ---------------------------------------------------------
+      - name: Generate Gradle wrapper
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Generate wrapper
+        shell: bash
+        run: |
+          gradle wrapper --gradle-version 8.9
+
+
+      # ---------------------------------------------------------
+      # 17. Make wrapper executable
+      # ---------------------------------------------------------
+      - name: Make Gradle wrapper executable
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+
+
+      # ---------------------------------------------------------
+      # 18. Build debug APK
+      # ---------------------------------------------------------
+      - name: Build debug APK
+        shell: bash
+        run: |
+          ./gradlew --no-daemon clean assembleDebug
+
+
+      # ---------------------------------------------------------
+      # 19. Rename APK
+      # ---------------------------------------------------------
+      - name: Prepare APK
+        shell: bash
+        run: |
+          mkdir -p output
+
+          cp \
+            app/build/outputs/apk/debug/app-debug.apk \
+            output/VocabReader-AutoPopup-V2.0-debug.apk
+
+
+      # ---------------------------------------------------------
+      # 20. Upload APK as GitHub Actions artifact
+      # ---------------------------------------------------------
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VocabReader-AutoPopup-V2.0-APK
+          path: output/VocabReader-AutoPopup-V2.0-debug.apk
+          if-no-files-found: error
